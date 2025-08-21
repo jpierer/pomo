@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	lg "github.com/charmbracelet/lipgloss"
 )
 
 func main() {
@@ -33,6 +34,7 @@ type model struct {
 	beforeState       uint
 	stopped           bool
 	autoIterateStates bool
+	quitSelected      int // 0 = No, 1 = Yes
 }
 
 func NewModel() model {
@@ -45,6 +47,7 @@ func NewModel() model {
 		pauseRemaining:    time.Duration(pauseMinutes) * time.Second,
 		stopped:           true,
 		autoIterateStates: false,
+		quitSelected:      0,
 	}
 }
 
@@ -63,22 +66,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Quit View
 		case "ctrl+c", "q":
-			if m.state == settingView {
-				m.SwitchState(workView)
-				return m, nil
-			}
-
 			// Open confirm
+			m.quitSelected = 0 // Reset to "No"
 			m.SwitchState(quitView)
 
-		// Confirm quit
-		case "y":
+		// Navigation in quit view
+		case "left":
 			if m.state == quitView {
-				return m, tea.Quit
+				m.quitSelected = 0 // No
 			}
 
-		// Cancel quit
-		case "n":
+		case "right":
+			if m.state == quitView {
+				m.quitSelected = 1 // Yes
+			}
+
+		// Confirm
+		case "enter":
+			switch m.state {
+			case quitView:
+				if m.quitSelected == 1 {
+					return m, tea.Quit
+				} else {
+					m.state = m.beforeState
+				}
+			case settingView:
+				// todo save settings
+				m.SwitchState(workView)
+			}
+
+		// Cancel quit (ESC or n)
+		case "escape", "n":
 			if m.state == quitView {
 				m.state = m.beforeState
 			}
@@ -88,13 +106,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state != settingView {
 				m.stopped = true
 				m.SwitchState(settingView)
-			}
-
-		// Save Setting
-		case "enter":
-			if m.state == settingView {
-				// todo save settings
-				m.SwitchState(workView)
 			}
 
 		//Work View
@@ -117,7 +128,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-			// Reset
+		// Reset
 		case "r":
 			if m.state == workView || m.state == pauseView {
 				m.ResetAndStop()
@@ -167,23 +178,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	content := RenderView(m) + "\n" + RenderHelp(m)
 
-	s := ""
-	s += Render(m)
-	s += RenderHelp(m)
+	viewStyle := lg.NewStyle().
+		Padding(2, 4, 0, 4).
+		Border(lg.RoundedBorder()).
+		BorderForeground(lg.Color("#ecd10aff")).
+		Align(lg.Center).
+		Width(80)
 
-	return s
+	return viewStyle.Render(content)
 }
 
 func (m *model) SwitchState(newState uint) {
 	m.beforeState = m.state
 	m.state = newState
-}
-
-func tickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return t
-	})
 }
 
 func (m *model) ResetAndStop() {
@@ -192,100 +201,116 @@ func (m *model) ResetAndStop() {
 	m.stopped = true
 }
 
-func Render(m model) string {
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return t
+	})
+}
+
+func RenderView(m model) string {
 	switch m.state {
 	case workView:
-		return RenderTime(m.workRemaining)
+		return RenderTime(m)
 	case pauseView:
-		return RenderTime(m.pauseRemaining)
+		return RenderTime(m)
 	case settingView:
 		return RenderSettings(m)
 	case quitView:
-		return "Really quit? [Y] Yes  [N] No"
+		return RenderQuit(m)
 	}
 	return ""
 }
 
-func RenderTime(t time.Duration) string {
+func RenderTime(m model) string {
 
 	digits := map[rune][]string{
 		'0': {
-			" ███ ",
-			"█   █",
-			"█   █",
-			"█   █",
-			" ███ ",
+			" ██████ ",
+			"██    ██",
+			"██    ██",
+			"██    ██",
+			" ██████ ",
 		},
 		'1': {
-			"  █  ",
-			" ██  ",
-			"  █  ",
-			"  █  ",
-			" ███ ",
+			"   ██   ",
+			"  ███   ",
+			"   ██   ",
+			"   ██   ",
+			" ██████ ",
 		},
 		'2': {
-			" ███ ",
-			"    █",
-			" ███ ",
-			"█    ",
-			"█████",
+			" ██████ ",
+			"      ██",
+			" ██████ ",
+			"██      ",
+			"████████",
 		},
 		'3': {
-			"████ ",
-			"    █",
-			" ███ ",
-			"    █",
-			"████ ",
+			" ██████ ",
+			"      ██",
+			"  █████ ",
+			"      ██",
+			" ██████ ",
 		},
 		'4': {
-			"█  █ ",
-			"█  █ ",
-			"█████",
-			"   █ ",
-			"   █ ",
+			"██    ██",
+			"██    ██",
+			"████████",
+			"      ██",
+			"      ██",
 		},
 		'5': {
-			"█████",
-			"█    ",
-			"████ ",
-			"    █",
-			"████ ",
+			"████████",
+			"██      ",
+			"███████ ",
+			"      ██",
+			"███████ ",
 		},
 		'6': {
-			" ███ ",
-			"█    ",
-			"████ ",
-			"█   █",
-			" ███ ",
+			" ██████ ",
+			"██      ",
+			"███████ ",
+			"██    ██",
+			" ██████ ",
 		},
 		'7': {
-			"█████",
-			"    █",
-			"   █ ",
-			"  █  ",
-			"  █  ",
+			"████████",
+			"      ██",
+			"     ██ ",
+			"    ██  ",
+			"   ██   ",
 		},
 		'8': {
-			" ███ ",
-			"█   █",
-			" ███ ",
-			"█   █",
-			" ███ ",
+			" ██████ ",
+			"██    ██",
+			" ██████ ",
+			"██    ██",
+			" ██████ ",
 		},
 		'9': {
-			" ███ ",
-			"█   █",
-			" ████",
-			"    █",
-			" ███ ",
+			" ██████ ",
+			"██    ██",
+			" ███████",
+			"      ██",
+			" ██████ ",
 		},
 		':': {
-			"     ",
-			"  █  ",
-			"     ",
-			"  █  ",
-			"     ",
+			"        ",
+			"   ██   ",
+			"        ",
+			"   ██   ",
+			"        ",
 		},
+	}
+
+	var t time.Duration
+	var modeTitle string
+	if m.state == workView {
+		t = m.workRemaining
+		modeTitle = " - Work Mode - "
+	} else {
+		t = m.pauseRemaining
+		modeTitle = " - Pause Mode - "
 	}
 
 	min := int(t.Minutes())
@@ -294,8 +319,8 @@ func RenderTime(t time.Duration) string {
 	// Format time as MM:SS
 	timeStr := fmt.Sprintf("%02d:%02d", min, sec)
 
-	// Map ASCII art to time format
-	lines := make([]string, 5) // height of ascii digits
+	// Create timer display
+	lines := make([]string, 5)
 	for i := 0; i < 5; i++ {
 		for _, c := range timeStr {
 			if art, ok := digits[c]; ok {
@@ -303,22 +328,75 @@ func RenderTime(t time.Duration) string {
 			}
 		}
 	}
-	return "\n" + lines[0] + "\n" + lines[1] + "\n" + lines[2] + "\n" + lines[3] + "\n" + lines[4] + "\n"
+
+	timerDisplay := lines[0] + "\n" + lines[1] + "\n" + lines[2] + "\n" + lines[3] + "\n" + lines[4]
+
+	titleStyle := lg.NewStyle().
+		Foreground(lg.Color("#FFFFFF")).
+		Bold(true).
+		Align(lg.Center)
+
+	modeDisplay := titleStyle.Render(modeTitle)
+
+	fullDisplay := timerDisplay + "\n\n" + modeDisplay + "\n\n"
+
+	timerStyle := lg.NewStyle().
+		Foreground(lg.Color("#FFFFFF")).
+		Align(lg.Center)
+
+	return timerStyle.Render(fullDisplay)
 }
 
 func RenderSettings(m model) string {
-	return "Settings" // Work, Pause, AutoIterate
+	settingsStyle := lg.NewStyle().
+		Foreground(lg.Color("#666666")).
+		Faint(true).
+		Padding(1, 2).
+		Align(lg.Center)
+
+	return settingsStyle.Render("Settings - TODO\n\n")
 }
 
 func RenderHelp(m model) string {
-	s := "\n\n"
+	helpStyle := lg.NewStyle().
+		Foreground(lg.Color("#888888")).
+		Faint(true).
+		Padding(0, 0).
+		Align(lg.Center)
+
+	var helpText string
 	switch m.state {
 	case workView:
-		s += "[SPACE] Timer Start/Pause  [P] PauseMode  [S] Settings  [R] Reset  [Q] Quit"
+		helpText = "[SPACE] Start/Pause  [P] PauseMode  [S] Settings  [R] Reset  [Q] Quit"
 	case pauseView:
-		s += "[SPACE] Timer Start/Pause  [W] WorkMode  [S] Settings  [R] Reset  [Q] Quit"
+		helpText = "[SPACE] Start/Pause  [W] WorkMode  [S] Settings  [R] Reset  [Q] Quit"
 	case settingView:
-		s += "[ENTER] Save  [Q] Cancel"
+		helpText = "[ENTER] Save & Exit"
 	}
-	return s
+
+	return helpStyle.Render(helpText)
+}
+
+func RenderQuit(m model) string {
+	quitStyle := lg.NewStyle().
+		Foreground(lg.Color("#fff")).
+		Bold(true).
+		Align(lg.Center)
+
+	noStyle := lg.NewStyle().Foreground(lg.Color("#888888"))
+	yesStyle := lg.NewStyle().Foreground(lg.Color("#888888"))
+
+	if m.quitSelected == 0 {
+		noStyle = lg.NewStyle().Foreground(lg.Color("#fff")).Bold(true)
+	} else {
+		yesStyle = lg.NewStyle().Foreground(lg.Color("#fff")).Bold(true)
+	}
+
+	noOption := noStyle.Render("[ No ]")
+	yesOption := yesStyle.Render("[ Yes ]")
+
+	content := "Really quit?\n\n" + noOption + "    " + yesOption + "\n\n" +
+		lg.NewStyle().Foreground(lg.Color("#666666")).Faint(true).Render("← → to select, ENTER to confirm")
+
+	return quitStyle.Render(content)
 }
