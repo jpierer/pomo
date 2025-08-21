@@ -96,7 +96,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		// Cancel quit (ESC or n)
-		case "escape", "n":
+		case "esc", "n":
 			if m.state == quitView {
 				m.state = m.beforeState
 			}
