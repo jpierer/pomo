@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	workView uint = iota
+	workView int = iota
 	pauseView
 	settingView
 	quitView
@@ -136,22 +136,24 @@ var (
 var soundFile []byte
 
 type model struct {
-	workMinutes       uint
-	pauseMinutes      uint
+	width             int
+	height            int
+	workMinutes       int
+	pauseMinutes      int
 	workRemaining     time.Duration
 	pauseRemaining    time.Duration
-	state             uint
-	beforeState       uint
+	state             int
+	beforeState       int
 	stopped           bool
 	autoIterateStates bool
 	modeTitle         string
-	quitSelected      uint
+	quitSelected      int
 	settingInputs     []textinput.Model
-	settingsIndex     uint
+	settingsIndex     int
 }
 
 func main() {
-	p := tea.NewProgram(NewModel())
+	p := tea.NewProgram(NewModel(), tea.WithAltScreen())
 	_, err := p.Run()
 	if err != nil {
 		log.Fatalf("Error to run pomo %+v", err)
@@ -160,10 +162,10 @@ func main() {
 }
 
 func NewModel() model {
-	workMinutes := uint(25)
-	pauseMinutes := uint(5)
+	workMinutes := 25
+	pauseMinutes := 5
 
-	// Create input fields - now read-only display fields
+	// Create settings input fields
 	settingInputs := make([]textinput.Model, 3)
 	values := []string{fmt.Sprint(workMinutes), fmt.Sprint(pauseMinutes), "[ ]"}
 
@@ -205,6 +207,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+
 	// on key press
 	case tea.KeyMsg:
 
@@ -236,7 +242,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case settingView:
 				// Navigate between settings fields
 				m.settingInputs[m.settingsIndex].Blur()
-				if m.settingsIndex < uint(len(m.settingInputs)-1) {
+				if m.settingsIndex < len(m.settingInputs)-1 {
 					m.settingsIndex++
 				}
 				m.settingInputs[m.settingsIndex].Focus()
@@ -254,7 +260,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.settingInputs[1].SetValue(fmt.Sprint(m.pauseMinutes))
 					m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
 				}
-				// AutoTimer doesn't respond to up/down
 			}
 
 		case "down":
@@ -269,7 +274,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.settingInputs[1].SetValue(fmt.Sprint(m.pauseMinutes))
 					m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
 				}
-				// AutoTimer doesn't respond to up/down
 			}
 
 		// Confirm
@@ -282,7 +286,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = m.beforeState
 				}
 			case settingView:
-				// Settings are already saved in real-time via up/down keys
 				m.SwitchState(workView)
 			}
 
@@ -335,8 +338,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		}
 
-		// We don't need textinput updates anymore since we control values directly
-
 	// on tick
 	case time.Time:
 		if m.state == workView {
@@ -381,6 +382,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+
+	if m.width == 0 || m.height == 0 {
+		return "Loading..."
+	}
+
 	content := RenderView(m) + "\n" + RenderHelp(m)
 
 	viewStyle := lg.NewStyle().
@@ -390,10 +396,17 @@ func (m model) View() string {
 		Align(lg.Center).
 		Width(60)
 
-	return viewStyle.Render(content)
+	return lg.Place(
+		int(m.width),
+		int(m.height),
+		lg.Center,
+		lg.Center,
+		viewStyle.Render(content),
+	)
+
 }
 
-func (m *model) SwitchState(newState uint) {
+func (m *model) SwitchState(newState int) {
 	m.beforeState = m.state
 	m.state = newState
 	m.modeTitle = GetRandomModeTitle(*m)
@@ -492,7 +505,6 @@ func RenderSettings(m model) string {
 		Bold(true).
 		Padding(0, 1)
 
-	// Style for AutoTimer checkbox (no border)
 	checkboxBlurStyle := lg.NewStyle().
 		Width(12).
 		Align(lg.Center).
@@ -530,7 +542,6 @@ func RenderSettings(m model) string {
 	// Join columns horizontally with spacing
 	content := lg.JoinHorizontal(lg.Top, columns[0], "  ", columns[1], "  ", columns[2])
 
-	// Add title
 	titleStyle := lg.NewStyle().
 		Foreground(secondColor).
 		Bold(true).
@@ -561,7 +572,7 @@ func RenderHelp(m model) string {
 	case pauseView:
 		helpText = "[SPACE] Toggle, [W]ork, [S]ettings, [R]eset, [Q]uit"
 	case settingView:
-		helpText = "[←→] Field  [↑↓] Value  [SPACE] Toggle  [ENTER] Save"
+		helpText = "[← →] Field  [↑ ↓] +/- min  [SPACE] Toggle  [ENTER] Save"
 	}
 
 	return helpStyle.Render(helpText)
