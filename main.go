@@ -397,8 +397,8 @@ func (m model) View() string {
 		Width(60)
 
 	return lg.Place(
-		int(m.width),
-		int(m.height),
+		m.width,
+		m.height,
 		lg.Center,
 		lg.Center,
 		viewStyle.Render(content),
