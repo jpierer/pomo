@@ -3,26 +3,127 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
 )
-
-func main() {
-	p := tea.NewProgram(NewModel())
-	_, err := p.Run()
-	if err != nil {
-		log.Fatalf("Error to run pomo %+v", err)
-	}
-
-}
 
 const (
 	workView uint = iota
 	pauseView
 	settingView
 	quitView
+)
+
+var (
+	primaryColor = lg.Color("#F1F5F9")
+	secondColor  = lg.Color("#A78BFA")
+	blurColor    = lg.Color("#767676")
+
+	workTitles = []string{
+		"deep dive",
+		"grind mode",
+		"laser focus",
+		"flow state",
+		"hustle",
+		"creation time",
+		"brain power",
+		"locked in",
+	}
+
+	pauseTitles = []string{
+		"chill zone",
+		"recharge",
+		"breathe",
+		"refresh",
+		"stretch it out",
+		"coffee time",
+		"take five",
+		"cool down",
+	}
+
+	digits = map[rune][]string{
+		'0': {
+			"████████",
+			"███  ███",
+			"███  ███",
+			"███  ███",
+			"████████",
+		},
+		'1': {
+			"   ███  ",
+			"   ███  ",
+			"   ███  ",
+			"   ███  ",
+			"   ███  ",
+		},
+		'2': {
+			"████████",
+			"     ███",
+			"████████",
+			"███     ",
+			"████████",
+		},
+		'3': {
+			"████████",
+			"     ███",
+			"████████",
+			"     ███",
+			"████████",
+		},
+		'4': {
+			"███  ███",
+			"███  ███",
+			"████████",
+			"     ███",
+			"     ███",
+		},
+		'5': {
+			"████████",
+			"███     ",
+			"████████",
+			"     ███",
+			"████████",
+		},
+		'6': {
+			"████████",
+			"███     ",
+			"████████",
+			"███  ███",
+			"████████",
+		},
+		'7': {
+			"████████",
+			"     ███",
+			"     ███",
+			"     ███",
+			"     ███",
+		},
+		'8': {
+			"████████",
+			"███  ███",
+			"████████",
+			"███  ███",
+			"████████",
+		},
+		'9': {
+			"████████",
+			"███  ███",
+			"████████",
+			"     ███",
+			"████████",
+		},
+		':': {
+			"     ",
+			" ███ ",
+			"     ",
+			" ███ ",
+			"     ",
+		},
+	}
 )
 
 type model struct {
@@ -34,25 +135,61 @@ type model struct {
 	beforeState       uint
 	stopped           bool
 	autoIterateStates bool
-	quitSelected      int // 0 = No, 1 = Yes
+	modeTitle         string
+	quitSelected      uint
+	settingInputs     []textinput.Model
+	settingsIndex     uint
+}
+
+func main() {
+	p := tea.NewProgram(NewModel())
+	_, err := p.Run()
+	if err != nil {
+		log.Fatalf("Error to run pomo %+v", err)
+	}
+
 }
 
 func NewModel() model {
-	workMinutes := uint(10)
+	workMinutes := uint(25)
 	pauseMinutes := uint(5)
-	return model{
+
+	// Create input fields - now read-only display fields
+	settingInputs := make([]textinput.Model, 3)
+	values := []string{fmt.Sprint(workMinutes), fmt.Sprint(pauseMinutes), "[ ]"}
+
+	for i := range settingInputs {
+		settingInputs[i] = textinput.New()
+		settingInputs[i].SetValue(values[i])
+		settingInputs[i].Prompt = ""
+		settingInputs[i].CharLimit = 3
+
+		if i == 0 {
+			settingInputs[i].Focus()
+		} else {
+			settingInputs[i].Blur()
+		}
+	}
+
+	m := &model{
 		workMinutes:       workMinutes,
-		workRemaining:     time.Duration(workMinutes) * time.Second, // todo auf Minutes umstellen
+		workRemaining:     time.Duration(workMinutes) * time.Minute,
 		pauseMinutes:      pauseMinutes,
-		pauseRemaining:    time.Duration(pauseMinutes) * time.Second,
+		pauseRemaining:    time.Duration(pauseMinutes) * time.Minute,
 		stopped:           true,
+		state:             workView,
+		modeTitle:         "",
 		autoIterateStates: false,
 		quitSelected:      0,
+		settingInputs:     settingInputs,
+		settingsIndex:     0,
 	}
+	m.modeTitle = GetRandomModeTitle(*m)
+	return *m
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return tea.SetWindowTitle("Pomo")
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -67,18 +204,63 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Quit View
 		case "ctrl+c", "q":
 			// Open confirm
-			m.quitSelected = 0 // Reset to "No"
-			m.SwitchState(quitView)
+			m.state = quitView
 
 		// Navigation in quit view
 		case "left":
-			if m.state == quitView {
+			switch m.state {
+			case quitView:
 				m.quitSelected = 0 // No
+			case settingView:
+				// Navigate between settings fields
+				m.settingInputs[m.settingsIndex].Blur()
+				if m.settingsIndex > 0 {
+					m.settingsIndex--
+				}
+				m.settingInputs[m.settingsIndex].Focus()
 			}
 
 		case "right":
-			if m.state == quitView {
+			switch m.state {
+			case quitView:
 				m.quitSelected = 1 // Yes
+			case settingView:
+				// Navigate between settings fields
+				m.settingInputs[m.settingsIndex].Blur()
+				if m.settingsIndex < uint(len(m.settingInputs)-1) {
+					m.settingsIndex++
+				}
+				m.settingInputs[m.settingsIndex].Focus()
+			}
+
+		case "up":
+			if m.state == settingView {
+				// Increase value (only for numeric fields)
+				if m.settingsIndex == 0 && m.workMinutes < 60 {
+					m.workMinutes++
+					m.settingInputs[0].SetValue(fmt.Sprint(m.workMinutes))
+					m.workRemaining = time.Duration(m.workMinutes) * time.Minute
+				} else if m.settingsIndex == 1 && m.pauseMinutes < 60 {
+					m.pauseMinutes++
+					m.settingInputs[1].SetValue(fmt.Sprint(m.pauseMinutes))
+					m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
+				}
+				// AutoTimer doesn't respond to up/down
+			}
+
+		case "down":
+			if m.state == settingView {
+				// Decrease value (only for numeric fields)
+				if m.settingsIndex == 0 && m.workMinutes > 1 {
+					m.workMinutes--
+					m.settingInputs[0].SetValue(fmt.Sprint(m.workMinutes))
+					m.workRemaining = time.Duration(m.workMinutes) * time.Minute
+				} else if m.settingsIndex == 1 && m.pauseMinutes > 1 {
+					m.pauseMinutes--
+					m.settingInputs[1].SetValue(fmt.Sprint(m.pauseMinutes))
+					m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
+				}
+				// AutoTimer doesn't respond to up/down
 			}
 
 		// Confirm
@@ -91,7 +273,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = m.beforeState
 				}
 			case settingView:
-				// todo save settings
+				// Settings are already saved in real-time via up/down keys
 				m.SwitchState(workView)
 			}
 
@@ -126,6 +308,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if wasStopped && !m.stopped {
 					return m, tickCmd()
 				}
+			} else if m.state == settingView && m.settingsIndex == 2 {
+				// Toggle AutoTimer checkbox
+				m.autoIterateStates = !m.autoIterateStates
+				if m.autoIterateStates {
+					m.settingInputs[2].SetValue("[x]")
+				} else {
+					m.settingInputs[2].SetValue("[ ]")
+				}
 			}
 
 		// Reset
@@ -135,6 +325,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		}
+
+		// We don't need textinput updates anymore since we control values directly
 
 	// on tick
 	case time.Time:
@@ -181,11 +373,11 @@ func (m model) View() string {
 	content := RenderView(m) + "\n" + RenderHelp(m)
 
 	viewStyle := lg.NewStyle().
-		Padding(2, 4, 0, 4).
-		Border(lg.RoundedBorder()).
-		BorderForeground(lg.Color("#ecd10aff")).
+		Padding(1, 2, 0, 2).
+		Border(lg.NormalBorder()).
+		BorderForeground(primaryColor).
 		Align(lg.Center).
-		Width(80)
+		Width(60)
 
 	return viewStyle.Render(content)
 }
@@ -193,11 +385,12 @@ func (m model) View() string {
 func (m *model) SwitchState(newState uint) {
 	m.beforeState = m.state
 	m.state = newState
+	m.modeTitle = GetRandomModeTitle(*m)
 }
 
 func (m *model) ResetAndStop() {
-	m.workRemaining = time.Duration(m.workMinutes) * time.Second //  TODO auf Minutes umstellen
-	m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Second
+	m.workRemaining = time.Duration(m.workMinutes) * time.Minute
+	m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
 	m.stopped = true
 }
 
@@ -223,94 +416,11 @@ func RenderView(m model) string {
 
 func RenderTime(m model) string {
 
-	digits := map[rune][]string{
-		'0': {
-			" ██████ ",
-			"██    ██",
-			"██    ██",
-			"██    ██",
-			" ██████ ",
-		},
-		'1': {
-			"   ██   ",
-			"  ███   ",
-			"   ██   ",
-			"   ██   ",
-			" ██████ ",
-		},
-		'2': {
-			" ██████ ",
-			"      ██",
-			" ██████ ",
-			"██      ",
-			"████████",
-		},
-		'3': {
-			" ██████ ",
-			"      ██",
-			"  █████ ",
-			"      ██",
-			" ██████ ",
-		},
-		'4': {
-			"██    ██",
-			"██    ██",
-			"████████",
-			"      ██",
-			"      ██",
-		},
-		'5': {
-			"████████",
-			"██      ",
-			"███████ ",
-			"      ██",
-			"███████ ",
-		},
-		'6': {
-			" ██████ ",
-			"██      ",
-			"███████ ",
-			"██    ██",
-			" ██████ ",
-		},
-		'7': {
-			"████████",
-			"      ██",
-			"     ██ ",
-			"    ██  ",
-			"   ██   ",
-		},
-		'8': {
-			" ██████ ",
-			"██    ██",
-			" ██████ ",
-			"██    ██",
-			" ██████ ",
-		},
-		'9': {
-			" ██████ ",
-			"██    ██",
-			" ███████",
-			"      ██",
-			" ██████ ",
-		},
-		':': {
-			"        ",
-			"   ██   ",
-			"        ",
-			"   ██   ",
-			"        ",
-		},
-	}
-
 	var t time.Duration
-	var modeTitle string
 	if m.state == workView {
 		t = m.workRemaining
-		modeTitle = " - Work Mode - "
 	} else {
 		t = m.pauseRemaining
-		modeTitle = " - Pause Mode - "
 	}
 
 	min := int(t.Minutes())
@@ -324,7 +434,7 @@ func RenderTime(m model) string {
 	for i := 0; i < 5; i++ {
 		for _, c := range timeStr {
 			if art, ok := digits[c]; ok {
-				lines[i] += art[i] + "  "
+				lines[i] += art[i] + " "
 			}
 		}
 	}
@@ -332,34 +442,93 @@ func RenderTime(m model) string {
 	timerDisplay := lines[0] + "\n" + lines[1] + "\n" + lines[2] + "\n" + lines[3] + "\n" + lines[4]
 
 	titleStyle := lg.NewStyle().
-		Foreground(lg.Color("#FFFFFF")).
+		Foreground(secondColor).
 		Bold(true).
 		Align(lg.Center)
 
-	modeDisplay := titleStyle.Render(modeTitle)
+	modeDisplay := titleStyle.Render(m.modeTitle)
 
 	fullDisplay := timerDisplay + "\n\n" + modeDisplay + "\n\n"
 
 	timerStyle := lg.NewStyle().
-		Foreground(lg.Color("#FFFFFF")).
+		Foreground(primaryColor).
 		Align(lg.Center)
 
 	return timerStyle.Render(fullDisplay)
 }
 
 func RenderSettings(m model) string {
+	labels := []string{"Work", "Pause", "Auto Mode"}
+
+	focusStyle := lg.NewStyle().
+		Border(lg.NormalBorder()).
+		BorderForeground(secondColor).
+		Width(12).
+		Align(lg.Center).
+		Padding(0, 1)
+
+	blurStyle := lg.NewStyle().
+		Border(lg.NormalBorder()).
+		BorderForeground(blurColor).
+		Width(12).
+		Align(lg.Center).
+		Padding(0, 1)
+
+	labelStyle := lg.NewStyle().
+		Width(12).
+		Align(lg.Center).
+		Foreground(primaryColor).
+		Bold(true).
+		Padding(0, 1)
+
+	// Style for AutoTimer checkbox (no border)
+	checkboxStyle := lg.NewStyle().
+		Width(12).
+		Align(lg.Center).
+		Padding(1)
+
+	// Create each field as a column
+	var columns []string
+	for i, input := range m.settingInputs {
+		label := labelStyle.Render(labels[i])
+		var field string
+
+		if i == 2 { // AutoTimer checkbox
+			field = checkboxStyle.Render(input.View())
+		} else {
+			if input.Focused() {
+				field = focusStyle.Render(input.View())
+			} else {
+				field = blurStyle.Render(input.View())
+			}
+		}
+		column := label + "\n" + field
+		columns = append(columns, column)
+	}
+
+	// Join columns horizontally with spacing
+	content := lg.JoinHorizontal(lg.Top, columns[0], "  ", columns[1], "  ", columns[2])
+
+	// Add title
+	titleStyle := lg.NewStyle().
+		Foreground(secondColor).
+		Bold(true).
+		Align(lg.Center).
+		Margin(0, 0, 1, 0)
+
+	title := titleStyle.Render("POMO-Settings")
+
 	settingsStyle := lg.NewStyle().
-		Foreground(lg.Color("#666666")).
-		Faint(true).
-		Padding(1, 2).
+		Foreground(primaryColor).
+		Padding(2, 0).
 		Align(lg.Center)
 
-	return settingsStyle.Render("Settings - TODO\n\n")
+	return settingsStyle.Render(title + "\n\n" + content)
 }
 
 func RenderHelp(m model) string {
 	helpStyle := lg.NewStyle().
-		Foreground(lg.Color("#888888")).
+		Foreground(blurColor).
 		Faint(true).
 		Padding(0, 0).
 		Align(lg.Center)
@@ -367,11 +536,11 @@ func RenderHelp(m model) string {
 	var helpText string
 	switch m.state {
 	case workView:
-		helpText = "[SPACE] Start/Pause  [P] PauseMode  [S] Settings  [R] Reset  [Q] Quit"
+		helpText = "[SPACE] Toggle, [P]ause, [S]ettings, [R]eset, [Q]uit"
 	case pauseView:
-		helpText = "[SPACE] Start/Pause  [W] WorkMode  [S] Settings  [R] Reset  [Q] Quit"
+		helpText = "[SPACE] Toggle, [W]ork, [S]ettings, [R]eset, [Q]uit"
 	case settingView:
-		helpText = "[ENTER] Save & Exit"
+		helpText = "[←→] Field  [↑↓] Value  [SPACE] Toggle  [ENTER] Save"
 	}
 
 	return helpStyle.Render(helpText)
@@ -379,24 +548,34 @@ func RenderHelp(m model) string {
 
 func RenderQuit(m model) string {
 	quitStyle := lg.NewStyle().
-		Foreground(lg.Color("#fff")).
+		Foreground(primaryColor).
 		Bold(true).
 		Align(lg.Center)
 
-	noStyle := lg.NewStyle().Foreground(lg.Color("#888888"))
-	yesStyle := lg.NewStyle().Foreground(lg.Color("#888888"))
+	noStyle := lg.NewStyle().Foreground(blurColor)
+	yesStyle := lg.NewStyle().Foreground(blurColor)
 
 	if m.quitSelected == 0 {
-		noStyle = lg.NewStyle().Foreground(lg.Color("#fff")).Bold(true)
+		noStyle = lg.NewStyle().Foreground(primaryColor).Bold(true)
 	} else {
-		yesStyle = lg.NewStyle().Foreground(lg.Color("#fff")).Bold(true)
+		yesStyle = lg.NewStyle().Foreground(primaryColor).Bold(true)
 	}
 
 	noOption := noStyle.Render("[ No ]")
 	yesOption := yesStyle.Render("[ Yes ]")
 
 	content := "Really quit?\n\n" + noOption + "    " + yesOption + "\n\n" +
-		lg.NewStyle().Foreground(lg.Color("#666666")).Faint(true).Render("← → to select, ENTER to confirm")
+		lg.NewStyle().Foreground(blurColor).Faint(true).Render("← → to select, ENTER to confirm")
 
 	return quitStyle.Render(content)
+}
+
+func GetRandomModeTitle(m model) string {
+	switch m.state {
+	case workView:
+		return "- " + workTitles[rand.Intn(len(workTitles))] + " -"
+	case pauseView:
+		return "- " + pauseTitles[rand.Intn(len(pauseTitles))] + " -"
+	}
+	return ""
 }
