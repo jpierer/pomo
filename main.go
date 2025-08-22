@@ -1,14 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"time"
 
+	_ "embed"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
+	"github.com/faiface/beep/mp3"
+	"github.com/faiface/beep/speaker"
 )
 
 const (
@@ -20,7 +26,7 @@ const (
 
 var (
 	primaryColor = lg.Color("#F1F5F9")
-	secondColor  = lg.Color("#A78BFA")
+	secondColor  = lg.Color("#81edf6ff")
 	blurColor    = lg.Color("#767676")
 
 	workTitles = []string{
@@ -125,6 +131,9 @@ var (
 		},
 	}
 )
+
+//go:embed blink.mp3
+var soundFile []byte
 
 type model struct {
 	workMinutes       uint
@@ -335,6 +344,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.workRemaining -= time.Second
 			}
 			if m.workRemaining < 0 {
+				PlaySound()
 				m.ResetAndStop()
 				m.SwitchState(pauseView)
 
@@ -350,6 +360,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pauseRemaining -= time.Second
 			}
 			if m.pauseRemaining < 0 {
+				PlaySound()
 				m.ResetAndStop()
 				m.SwitchState(workView)
 
@@ -482,10 +493,16 @@ func RenderSettings(m model) string {
 		Padding(0, 1)
 
 	// Style for AutoTimer checkbox (no border)
-	checkboxStyle := lg.NewStyle().
+	checkboxBlurStyle := lg.NewStyle().
 		Width(12).
 		Align(lg.Center).
 		Padding(1)
+
+	checkboxFocusStyle := lg.NewStyle().
+		Width(12).
+		Align(lg.Center).
+		Padding(1).
+		Foreground(secondColor)
 
 	// Create each field as a column
 	var columns []string
@@ -494,7 +511,11 @@ func RenderSettings(m model) string {
 		var field string
 
 		if i == 2 { // AutoTimer checkbox
-			field = checkboxStyle.Render(input.View())
+			if input.Focused() {
+				field = checkboxFocusStyle.Render(input.View())
+			} else {
+				field = checkboxBlurStyle.Render(input.View())
+			}
 		} else {
 			if input.Focused() {
 				field = focusStyle.Render(input.View())
@@ -578,4 +599,26 @@ func GetRandomModeTitle(m model) string {
 		return "- " + pauseTitles[rand.Intn(len(pauseTitles))] + " -"
 	}
 	return ""
+}
+
+func PlaySound() {
+	// Run sound playback in a goroutine to avoid blocking the UI
+	go func() {
+		reader := bytes.NewReader(soundFile)
+
+		streamer, format, err := mp3.Decode(io.NopCloser(reader))
+		if err != nil {
+			log.Printf("Error decoding MP3: %v", err)
+			return
+		}
+		defer streamer.Close()
+
+		// Note: speaker.Init can only be called once, so we handle the case where it's already initialized
+		if err := speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10)); err != nil {
+			// Speaker might already be initialized, which is fine
+			log.Printf("Speaker init warning (might already be initialized): %v", err)
+		}
+
+		speaker.Play(streamer)
+	}()
 }
