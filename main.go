@@ -284,6 +284,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Quit
 				} else {
 					m.state = m.beforeState
+					m.modeTitle = GetRandomModeTitle(m)
 				}
 			case settingView:
 				m.SwitchState(workView)
