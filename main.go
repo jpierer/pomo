@@ -391,8 +391,6 @@ func (m model) View() string {
 
 	viewStyle := lg.NewStyle().
 		Padding(1, 2, 0, 2).
-		Border(lg.NormalBorder()).
-		BorderForeground(primaryColor).
 		Align(lg.Center).
 		Width(60)
 
