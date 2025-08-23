@@ -30,14 +30,14 @@ var (
 	blurColor    = lg.Color("#767676")
 
 	workTitles = []string{
-		"deep dive",
-		"grind mode",
-		"laser focus",
+		"beast mode",
 		"flow state",
-		"hustle",
-		"creation time",
-		"brain power",
-		"locked in",
+		"focus zone",
+		"deep work",
+		"laser focus",
+		"hustle hard",
+		"zone mode",
+		"turbo mode",
 	}
 
 	pauseTitles = []string{
@@ -548,7 +548,7 @@ func RenderSettings(m model) string {
 		Align(lg.Center).
 		Margin(0, 0, 1, 0)
 
-	title := titleStyle.Render("POMO-Settings")
+	title := titleStyle.Render("Pomo-Settings")
 
 	settingsStyle := lg.NewStyle().
 		Foreground(primaryColor).
