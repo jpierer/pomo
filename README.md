@@ -64,7 +64,7 @@ go install github.com/jpierer/pomo@latest
 
 ### Controls
 
-- `SPACE` - Start/Stop timer
+- `SPACE` - Start/Stop current timer
 - `S` - Open settings
 - `R` - Reset current timer
 - `W` - Switch to work mode
