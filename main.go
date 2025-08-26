@@ -1,20 +1,19 @@
 package main
 
 import (
-	"bytes"
+	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"time"
 
-	_ "embed"
-
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
-	"github.com/faiface/beep/mp3"
-	"github.com/faiface/beep/speaker"
+	"github.com/gen2brain/beeep"
 )
 
 const (
@@ -25,9 +24,11 @@ const (
 )
 
 var (
-	primaryColor = lg.Color("#F1F5F9")
-	secondColor  = lg.Color("#81edf6ff")
-	blurColor    = lg.Color("#767676")
+	lightColor    = lg.Color("#F1F5F9")
+	workModeColor = lg.Color("#81edf6ff")
+	pauseColor    = lg.Color("#38e979ff")
+	darkColor     = lg.Color("#333")
+	blurColor     = lg.Color("#767676")
 
 	workTitles = []string{
 		"beast mode",
@@ -50,101 +51,25 @@ var (
 		"take five",
 		"cool down",
 	}
-
-	digits = map[rune][]string{
-		'0': {
-			"████████",
-			"███  ███",
-			"███  ███",
-			"███  ███",
-			"████████",
-		},
-		'1': {
-			"   ███  ",
-			"   ███  ",
-			"   ███  ",
-			"   ███  ",
-			"   ███  ",
-		},
-		'2': {
-			"████████",
-			"     ███",
-			"████████",
-			"███     ",
-			"████████",
-		},
-		'3': {
-			"████████",
-			"     ███",
-			"████████",
-			"     ███",
-			"████████",
-		},
-		'4': {
-			"███  ███",
-			"███  ███",
-			"████████",
-			"     ███",
-			"     ███",
-		},
-		'5': {
-			"████████",
-			"███     ",
-			"████████",
-			"     ███",
-			"████████",
-		},
-		'6': {
-			"████████",
-			"███     ",
-			"████████",
-			"███  ███",
-			"████████",
-		},
-		'7': {
-			"████████",
-			"     ███",
-			"     ███",
-			"     ███",
-			"     ███",
-		},
-		'8': {
-			"████████",
-			"███  ███",
-			"████████",
-			"███  ███",
-			"████████",
-		},
-		'9': {
-			"████████",
-			"███  ███",
-			"████████",
-			"     ███",
-			"████████",
-		},
-		':': {
-			"     ",
-			" ███ ",
-			"     ",
-			" ███ ",
-			"     ",
-		},
-	}
 )
 
-//go:embed blink.mp3
-var soundFile []byte
+type settings struct {
+	WorkMinutes  int
+	PauseMinutes int
+	AutoMode     bool
+}
 
 type model struct {
 	width             int
 	height            int
-	workMinutes       int
-	pauseMinutes      int
 	workRemaining     time.Duration
 	pauseRemaining    time.Duration
 	state             int
 	beforeState       int
 	stopped           bool
+	settings          settings
+	workMinutes       int
+	pauseMinutes      int
 	autoIterateStates bool
 	modeTitle         string
 	quitSelected      int
@@ -162,8 +87,17 @@ func main() {
 }
 
 func NewModel() model {
+
 	workMinutes := 25
 	pauseMinutes := 5
+	autoMode := false
+
+	settings, err := LoadSettings()
+	if err == nil {
+		workMinutes = settings.WorkMinutes
+		pauseMinutes = settings.PauseMinutes
+		autoMode = settings.AutoMode
+	}
 
 	// Create settings input fields
 	settingInputs := make([]textinput.Model, 3)
@@ -190,12 +124,19 @@ func NewModel() model {
 		stopped:           true,
 		state:             workView,
 		modeTitle:         "",
-		autoIterateStates: false,
+		autoIterateStates: autoMode,
 		quitSelected:      0,
 		settingInputs:     settingInputs,
 		settingsIndex:     0,
 	}
+
 	m.modeTitle = GetRandomModeTitle(*m)
+
+	settingInputs[2].SetValue("[ ]")
+	if m.autoIterateStates {
+		settingInputs[2].SetValue("[x]")
+	}
+
 	return *m
 }
 
@@ -287,6 +228,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.modeTitle = GetRandomModeTitle(m)
 				}
 			case settingView:
+				// Save settings
+				m.settings = settings{
+					WorkMinutes:  m.workMinutes,
+					PauseMinutes: m.pauseMinutes,
+					AutoMode:     m.autoIterateStates,
+				}
+				SaveSettings(m.settings)
 				m.SwitchState(workView)
 			}
 
@@ -346,7 +294,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.workRemaining -= time.Second
 			}
 			if m.workRemaining < 0 {
-				PlaySound()
+				Notify("Time is up, take a break!")
 				m.ResetAndStop()
 				m.SwitchState(pauseView)
 
@@ -362,7 +310,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pauseRemaining -= time.Second
 			}
 			if m.pauseRemaining < 0 {
-				PlaySound()
+				Notify("Time is up, get back to work!")
 				m.ResetAndStop()
 				m.SwitchState(workView)
 
@@ -388,7 +336,7 @@ func (m model) View() string {
 		return "Loading..."
 	}
 
-	content := RenderView(m) + "\n" + RenderHelp(m)
+	content := RenderView(&m) + "\n" + RenderHelp(m)
 
 	viewStyle := lg.NewStyle().
 		Padding(1, 2, 0, 2).
@@ -423,59 +371,74 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func RenderView(m model) string {
+func RenderView(m *model) string {
 	switch m.state {
 	case workView:
-		return RenderTime(m)
+		return RenderDisplay(m)
 	case pauseView:
-		return RenderTime(m)
+		return RenderDisplay(m)
 	case settingView:
-		return RenderSettings(m)
+		return RenderSettings(*m)
 	case quitView:
-		return RenderQuit(m)
+		return RenderQuit(*m)
 	}
 	return ""
 }
 
-func RenderTime(m model) string {
+func RenderDisplay(m *model) string {
 
-	var t time.Duration
-	if m.state == workView {
-		t = m.workRemaining
-	} else {
-		t = m.pauseRemaining
-	}
-
-	min := int(t.Minutes())
-	sec := int(t.Seconds()) % 60
+	currentTime := time.Now()
+	currentTimeMin := int(currentTime.Hour())
+	currentTimeSec := int(currentTime.Minute()) % 60
 
 	// Format time as MM:SS
-	timeStr := fmt.Sprintf("%02d:%02d", min, sec)
+	currentTimeString := fmt.Sprintf("%02d:%02d", currentTimeMin, currentTimeSec)
 
-	// Create timer display
-	lines := make([]string, 5)
-	for i := 0; i < 5; i++ {
-		for _, c := range timeStr {
-			if art, ok := digits[c]; ok {
-				lines[i] += art[i] + " "
-			}
-		}
+	var timerRemaining time.Duration
+	var timerColor lg.Color
+	var progressPercent float64
+
+	if m.state == workView {
+		timerRemaining = m.workRemaining
+		timerColor = workModeColor
+		totalDuration := time.Duration(m.workMinutes) * time.Minute
+		progressPercent = 1.0 - (m.workRemaining.Seconds() / totalDuration.Seconds())
+	} else {
+		timerRemaining = m.pauseRemaining
+		timerColor = pauseColor
+		totalDuration := time.Duration(m.pauseMinutes) * time.Minute
+		progressPercent = 1.0 - (m.pauseRemaining.Seconds() / totalDuration.Seconds())
 	}
 
-	timerDisplay := lines[0] + "\n" + lines[1] + "\n" + lines[2] + "\n" + lines[3] + "\n" + lines[4]
+	// Ensure progress is between 0 and 1
+	if progressPercent < 0 {
+		progressPercent = 0
+	}
+	if progressPercent > 1 {
+		progressPercent = 1
+	}
+
+	tempProgress := progress.New(progress.WithDefaultGradient())
+	tempProgress.Width = 52
+
+	min := int(timerRemaining.Minutes())
+	sec := int(timerRemaining.Seconds()) % 60
+
+	// Format time as MM:SS
+	timerString := fmt.Sprintf("%02d:%02d", min, sec)
 
 	titleStyle := lg.NewStyle().
-		Foreground(secondColor).
+		Foreground(darkColor).
+		Background(timerColor).
 		Bold(true).
-		Align(lg.Center)
+		Padding(0, 1)
 
 	modeDisplay := titleStyle.Render(m.modeTitle)
 
-	fullDisplay := timerDisplay + "\n\n" + modeDisplay + "\n\n"
+	fullDisplay := modeDisplay + "\n\nTime: " + currentTimeString + " - Remaining: " + timerString + "\n\n" + tempProgress.ViewAs(progressPercent) + "\n\n"
 
 	timerStyle := lg.NewStyle().
-		Foreground(primaryColor).
-		Align(lg.Center)
+		Foreground(lightColor)
 
 	return timerStyle.Render(fullDisplay)
 }
@@ -485,7 +448,7 @@ func RenderSettings(m model) string {
 
 	focusStyle := lg.NewStyle().
 		Border(lg.NormalBorder()).
-		BorderForeground(secondColor).
+		BorderForeground(pauseColor).
 		Width(12).
 		Align(lg.Center).
 		Padding(0, 1)
@@ -500,7 +463,7 @@ func RenderSettings(m model) string {
 	labelStyle := lg.NewStyle().
 		Width(12).
 		Align(lg.Center).
-		Foreground(primaryColor).
+		Foreground(lightColor).
 		Bold(true).
 		Padding(0, 1)
 
@@ -513,7 +476,7 @@ func RenderSettings(m model) string {
 		Width(12).
 		Align(lg.Center).
 		Padding(1).
-		Foreground(secondColor)
+		Foreground(pauseColor)
 
 	// Create each field as a column
 	var columns []string
@@ -542,7 +505,7 @@ func RenderSettings(m model) string {
 	content := lg.JoinHorizontal(lg.Top, columns[0], "  ", columns[1], "  ", columns[2])
 
 	titleStyle := lg.NewStyle().
-		Foreground(secondColor).
+		Foreground(pauseColor).
 		Bold(true).
 		Align(lg.Center).
 		Margin(0, 0, 1, 0)
@@ -550,7 +513,7 @@ func RenderSettings(m model) string {
 	title := titleStyle.Render("Pomo-Settings")
 
 	settingsStyle := lg.NewStyle().
-		Foreground(primaryColor).
+		Foreground(lightColor).
 		Padding(2, 0).
 		Align(lg.Center)
 
@@ -579,7 +542,7 @@ func RenderHelp(m model) string {
 
 func RenderQuit(m model) string {
 	quitStyle := lg.NewStyle().
-		Foreground(primaryColor).
+		Foreground(lightColor).
 		Bold(true).
 		Align(lg.Center)
 
@@ -587,9 +550,9 @@ func RenderQuit(m model) string {
 	yesStyle := lg.NewStyle().Foreground(blurColor)
 
 	if m.quitSelected == 0 {
-		noStyle = lg.NewStyle().Foreground(primaryColor).Bold(true)
+		noStyle = lg.NewStyle().Foreground(pauseColor).Bold(true)
 	} else {
-		yesStyle = lg.NewStyle().Foreground(primaryColor).Bold(true)
+		yesStyle = lg.NewStyle().Foreground(pauseColor).Bold(true)
 	}
 
 	noOption := noStyle.Render("[ No ]")
@@ -611,24 +574,47 @@ func GetRandomModeTitle(m model) string {
 	return ""
 }
 
-func PlaySound() {
-	// Run sound playback in a goroutine to avoid blocking the UI
-	go func() {
-		reader := bytes.NewReader(soundFile)
+func Notify(message string) {
+	err := beeep.Notify("Pomo", message, "")
+	if err != nil {
+		log.Println("Error showing notification:", err)
+	}
+}
 
-		streamer, format, err := mp3.Decode(io.NopCloser(reader))
-		if err != nil {
-			log.Printf("Error decoding MP3: %v", err)
-			return
-		}
-		defer streamer.Close()
+func SaveSettings(settings settings) {
+	// Save the current settings to a file in the ~/.pomo/settings.json.
+	filePath := filepath.Join(os.Getenv("HOME"), ".pomo", "settings.json")
 
-		// Note: speaker.Init can only be called once, so we handle the case where it's already initialized
-		if err := speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10)); err != nil {
-			// Speaker might already be initialized, which is fine
-			log.Printf("Speaker init warning (might already be initialized): %v", err)
-		}
+	// Create the directory if it doesn't exist
+	err := os.MkdirAll(filepath.Dir(filePath), 0755)
+	if err != nil {
+		log.Println("Error creating settings directory:", err)
+		return
+	}
 
-		speaker.Play(streamer)
-	}()
+	data, err := json.Marshal(settings)
+	if err != nil {
+		log.Println("Error marshalling settings:", err)
+		return
+	}
+	err = os.WriteFile(filePath, data, 0644)
+	if err != nil {
+		log.Println("Error writing settings to file:", err)
+	}
+}
+
+func LoadSettings() (settings, error) {
+	var s settings
+	filePath := filepath.Join(os.Getenv("HOME"), ".pomo", "settings.json")
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Println("Error reading settings file:", err)
+		return s, err
+	}
+	err = json.Unmarshal(data, &s)
+	if err != nil {
+		log.Println("Error unmarshalling settings:", err)
+		return s, err
+	}
+	return s, nil
 }

@@ -1,17 +1,17 @@
 # Pomo
 
-A beautiful terminal-based Pomodoro Timer written in Go with a sleek TUI interface.
+A beautiful terminal-based Pomodoro Timer written in Go with a sleek TUI interface and progress visualization.
 
 ## Screenshots
 
 ![Work Mode](img/work.png)
-_Work mode - Stay focused_
+_Work mode - Stay focused and locked in_
 
 ![Pause Mode](img/pause.png)
 _Pause mode - Time to recharge_
 
 ![Settings](img/settings.png)
-_Settings - Customize your timers_
+_Settings - Customize your experience_
 
 ## What is the Pomodoro Technique?
 
@@ -25,9 +25,8 @@ Learn more about the [Pomodoro Technique on Wikipedia](https://en.wikipedia.org/
 
 ### Requirements
 
-- Go 1.19 or higher
+- Go 1.21 or higher
 - Terminal with Unicode support
-- Audio support for notification sounds
 
 ### Install
 
@@ -54,17 +53,19 @@ go install github.com/jpierer/pomo@latest
 ## Features
 
 - **Beautiful TUI Interface** - Clean, modern terminal interface using Bubble Tea
+- **Visual Progress Bar** - Real-time progress visualization with color-coded modes
 - **Customizable Timers** - Set custom work and pause durations (1-60 minutes)
 - **Auto-Iterate Mode** - Automatically switch between work and pause sessions
-- **Sound Notifications** - Audio alerts when sessions complete
-- **Elegant Design** - Stylish ASCII art timer display
+- **Desktop Notifications** - System notifications when sessions complete
+- **Persistent Settings** - Your preferences are saved automatically
+- **Dynamic Mode Titles** - Motivational titles that change with each session
 - **Lightweight** - Fast and minimal resource usage
 - **Cross-Platform** - Works on macOS, Linux, and Windows
 - **Keyboard Shortcuts** - Full keyboard navigation and controls
 
 ### Controls
 
-- `SPACE` - Start/Stop current timer
+- `SPACE` - Start/Stop timer
 - `S` - Open settings
 - `R` - Reset current timer
 - `W` - Switch to work mode
@@ -72,6 +73,16 @@ go install github.com/jpierer/pomo@latest
 - `Q` - Quit application
 - `↑/↓` - Adjust values in settings
 - `←/→` - Navigate between settings fields
+- `ENTER` - Save settings and return to timer
+
+## Technical Details
+
+Built with modern Go libraries:
+
+- **Bubble Tea** - Terminal UI framework
+- **Lipgloss** - Styling and layout
+- **Bubbles** - UI components (textinput, progress)
+- **Beeep** - Cross-platform desktop notifications
 
 ## Support Me
 
