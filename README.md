@@ -5,13 +5,13 @@ A beautiful terminal-based Pomodoro Timer written in Go with a sleek TUI interfa
 ## Screenshots
 
 ![Work Mode](img/work.png)
-_Work mode - Stay focused and locked in_
+_Work mode_
 
 ![Pause Mode](img/pause.png)
-_Pause mode - Time to recharge_
+_Pause mode_
 
 ![Settings](img/settings.png)
-_Settings - Customize your experience_
+_Settings_
 
 ## What is the Pomodoro Technique?
 
