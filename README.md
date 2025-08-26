@@ -5,12 +5,15 @@ A beautiful terminal-based Pomodoro Timer written in Go with a sleek TUI interfa
 ## Screenshots
 
 ![Work Mode](img/work.png)
+
 _Work mode_
 
 ![Pause Mode](img/pause.png)
+
 _Pause mode_
 
 ![Settings](img/settings.png)
+
 _Settings_
 
 ## What is the Pomodoro Technique?
