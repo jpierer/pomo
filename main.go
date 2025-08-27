@@ -75,6 +75,7 @@ type model struct {
 	quitSelected      int
 	settingInputs     []textinput.Model
 	settingsIndex     int
+	tickerStarted     bool
 }
 
 func main() {
@@ -128,6 +129,7 @@ func NewModel() model {
 		quitSelected:      0,
 		settingInputs:     settingInputs,
 		settingsIndex:     0,
+		tickerStarted:     false,
 	}
 
 	m.modeTitle = GetRandomModeTitle(*m)
@@ -261,14 +263,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.stopped = true
 			m.SwitchState(pauseView)
 
-		// Toggle Timer
+		// Toggle Timer and Settings
 		case " ":
 			if m.state == workView || m.state == pauseView {
-				wasStopped := m.stopped
 				m.stopped = !m.stopped
-				if wasStopped && !m.stopped {
-					return m, tickCmd()
-				}
 			} else if m.state == settingView && m.settingsIndex == 2 {
 				// Toggle AutoTimer checkbox
 				m.autoIterateStates = !m.autoIterateStates
@@ -302,7 +300,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.autoIterateStates {
 					m.stopped = false
 				}
-
 			}
 		}
 		if m.state == pauseView {
@@ -318,16 +315,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.autoIterateStates {
 					m.stopped = false
 				}
-
 			}
 		}
 
-		if !m.stopped {
-			return m, tickCmd()
-		}
+		// we always tick to keep the "timers" working
+		return m, tickCmd()
+	}
+
+	// starting the ticker so we can keep the clock working
+	// although the timers are not running
+	if !m.tickerStarted {
+		m.tickerStarted = true
+		return m, tickCmd()
 	}
 
 	return m, nil
+
 }
 
 func (m model) View() string {
@@ -608,7 +611,6 @@ func LoadSettings() (settings, error) {
 	filePath := filepath.Join(os.Getenv("HOME"), ".pomo", "settings.json")
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		log.Println("Error reading settings file:", err)
 		return s, err
 	}
 	err = json.Unmarshal(data, &s)
