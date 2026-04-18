@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"math/rand"
@@ -19,43 +20,48 @@ import (
 const (
 	workView int = iota
 	pauseView
+	standView
+	sitView
 	settingView
 	quitView
+)
+
+const (
+	modeWorkPause int = iota
+	modeDesk
 )
 
 var (
 	lightColor    = lg.Color("#F1F5F9")
 	workModeColor = lg.Color("#81edf6ff")
 	pauseColor    = lg.Color("#38e979ff")
+	standColor    = lg.Color("#fbbf24ff")
+	sitColor      = lg.Color("#d8b4feff")
 	darkColor     = lg.Color("#333")
 	blurColor     = lg.Color("#767676")
 
 	workTitles = []string{
-		"beast mode",
-		"flow state",
-		"focus zone",
-		"deep work",
-		"laser focus",
-		"hustle hard",
-		"zone mode",
-		"turbo mode",
+		"--- WORK ---",
 	}
 
 	pauseTitles = []string{
-		"chill zone",
-		"recharge",
-		"breathe",
-		"refresh",
-		"stretch it out",
-		"coffee time",
-		"take five",
-		"cool down",
+		"--- PAUSE ---",
+	}
+
+	standTitles = []string{
+		"^^^ STAND UP ^^^",
+	}
+
+	sitTitles = []string{
+		"vvv SIT DOWN vvv",
 	}
 )
 
 type settings struct {
 	WorkMinutes  int
 	PauseMinutes int
+	StandMinutes int
+	SitMinutes   int
 	AutoMode     bool
 }
 
@@ -64,21 +70,34 @@ type model struct {
 	height            int
 	workRemaining     time.Duration
 	pauseRemaining    time.Duration
+	standRemaining    time.Duration
+	sitRemaining      time.Duration
 	state             int
 	beforeState       int
 	stopped           bool
 	settings          settings
 	workMinutes       int
 	pauseMinutes      int
+	standMinutes      int
+	sitMinutes        int
 	autoIterateStates bool
 	modeTitle         string
 	quitSelected      int
 	settingInputs     []textinput.Model
 	settingsIndex     int
+	modeType          int
 }
 
 func main() {
-	p := tea.NewProgram(NewModel(), tea.WithAltScreen())
+	mode := flag.String("mode", "work", "Mode: 'work' for Work/Pause or 'desk' for Stand/Sit")
+	flag.Parse()
+
+	modeType := modeWorkPause
+	if *mode == "desk" {
+		modeType = modeDesk
+	}
+
+	p := tea.NewProgram(NewModel(modeType), tea.WithAltScreen())
 	_, err := p.Run()
 	if err != nil {
 		log.Fatalf("Error to run pomo %+v", err)
@@ -86,10 +105,12 @@ func main() {
 
 }
 
-func NewModel() model {
+func NewModel(modeType int) model {
 
 	workMinutes := 25
 	pauseMinutes := 5
+	standMinutes := 30
+	sitMinutes := 30
 	autoMode := false
 
 	settings, err := LoadSettings()
@@ -97,15 +118,35 @@ func NewModel() model {
 		workMinutes = settings.WorkMinutes
 		pauseMinutes = settings.PauseMinutes
 		autoMode = settings.AutoMode
+		// Only override if non-zero values exist (for backwards compatibility)
+		if settings.StandMinutes > 0 {
+			standMinutes = settings.StandMinutes
+		}
+		if settings.SitMinutes > 0 {
+			sitMinutes = settings.SitMinutes
+		}
 	}
 
-	// Create settings input fields
-	settingInputs := make([]textinput.Model, 3)
-	values := []string{fmt.Sprint(workMinutes), fmt.Sprint(pauseMinutes), "[ ]"}
+	// Determine number of input fields based on mode
+	numFields := 3 // Work, Pause, AutoMode for WorkPause mode
+	if modeType == modeDesk {
+		numFields = 3 // Stand, Sit, AutoMode
+	}
+
+	settingInputs := make([]textinput.Model, numFields)
+	var values []string
+
+	if modeType == modeWorkPause {
+		values = []string{fmt.Sprint(workMinutes), fmt.Sprint(pauseMinutes), "[ ]"}
+	} else {
+		values = []string{fmt.Sprint(standMinutes), fmt.Sprint(sitMinutes), "[ ]"}
+	}
 
 	for i := range settingInputs {
 		settingInputs[i] = textinput.New()
-		settingInputs[i].SetValue(values[i])
+		if i < len(values) {
+			settingInputs[i].SetValue(values[i])
+		}
 		settingInputs[i].Prompt = ""
 		settingInputs[i].CharLimit = 3
 
@@ -116,23 +157,32 @@ func NewModel() model {
 		}
 	}
 
+	initialState := workView
+	if modeType == modeDesk {
+		initialState = standView
+	}
+
 	m := &model{
 		workMinutes:       workMinutes,
 		workRemaining:     time.Duration(workMinutes) * time.Minute,
 		pauseMinutes:      pauseMinutes,
 		pauseRemaining:    time.Duration(pauseMinutes) * time.Minute,
+		standMinutes:      standMinutes,
+		standRemaining:    time.Duration(standMinutes) * time.Minute,
+		sitMinutes:        sitMinutes,
+		sitRemaining:      time.Duration(sitMinutes) * time.Minute,
 		stopped:           true,
-		state:             workView,
+		state:             initialState,
 		modeTitle:         "",
 		autoIterateStates: autoMode,
 		quitSelected:      0,
 		settingInputs:     settingInputs,
 		settingsIndex:     0,
+		modeType:          modeType,
 	}
 
 	m.modeTitle = GetRandomModeTitle(*m)
 
-	settingInputs[2].SetValue("[ ]")
 	if m.autoIterateStates {
 		settingInputs[2].SetValue("[x]")
 	}
@@ -192,28 +242,52 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up":
 			if m.state == settingView {
 				// Increase value (only for numeric fields)
-				if m.settingsIndex == 0 && m.workMinutes < 60 {
-					m.workMinutes++
-					m.settingInputs[0].SetValue(fmt.Sprint(m.workMinutes))
-					m.workRemaining = time.Duration(m.workMinutes) * time.Minute
-				} else if m.settingsIndex == 1 && m.pauseMinutes < 60 {
-					m.pauseMinutes++
-					m.settingInputs[1].SetValue(fmt.Sprint(m.pauseMinutes))
-					m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
+				if m.modeType == modeWorkPause {
+					if m.settingsIndex == 0 && m.workMinutes < 60 {
+						m.workMinutes++
+						m.settingInputs[0].SetValue(fmt.Sprint(m.workMinutes))
+						m.workRemaining = time.Duration(m.workMinutes) * time.Minute
+					} else if m.settingsIndex == 1 && m.pauseMinutes < 60 {
+						m.pauseMinutes++
+						m.settingInputs[1].SetValue(fmt.Sprint(m.pauseMinutes))
+						m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
+					}
+				} else {
+					if m.settingsIndex == 0 && m.standMinutes < 60 {
+						m.standMinutes++
+						m.settingInputs[0].SetValue(fmt.Sprint(m.standMinutes))
+						m.standRemaining = time.Duration(m.standMinutes) * time.Minute
+					} else if m.settingsIndex == 1 && m.sitMinutes < 60 {
+						m.sitMinutes++
+						m.settingInputs[1].SetValue(fmt.Sprint(m.sitMinutes))
+						m.sitRemaining = time.Duration(m.sitMinutes) * time.Minute
+					}
 				}
 			}
 
 		case "down":
 			if m.state == settingView {
 				// Decrease value (only for numeric fields)
-				if m.settingsIndex == 0 && m.workMinutes > 1 {
-					m.workMinutes--
-					m.settingInputs[0].SetValue(fmt.Sprint(m.workMinutes))
-					m.workRemaining = time.Duration(m.workMinutes) * time.Minute
-				} else if m.settingsIndex == 1 && m.pauseMinutes > 1 {
-					m.pauseMinutes--
-					m.settingInputs[1].SetValue(fmt.Sprint(m.pauseMinutes))
-					m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
+				if m.modeType == modeWorkPause {
+					if m.settingsIndex == 0 && m.workMinutes > 1 {
+						m.workMinutes--
+						m.settingInputs[0].SetValue(fmt.Sprint(m.workMinutes))
+						m.workRemaining = time.Duration(m.workMinutes) * time.Minute
+					} else if m.settingsIndex == 1 && m.pauseMinutes > 1 {
+						m.pauseMinutes--
+						m.settingInputs[1].SetValue(fmt.Sprint(m.pauseMinutes))
+						m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
+					}
+				} else {
+					if m.settingsIndex == 0 && m.standMinutes > 1 {
+						m.standMinutes--
+						m.settingInputs[0].SetValue(fmt.Sprint(m.standMinutes))
+						m.standRemaining = time.Duration(m.standMinutes) * time.Minute
+					} else if m.settingsIndex == 1 && m.sitMinutes > 1 {
+						m.sitMinutes--
+						m.settingInputs[1].SetValue(fmt.Sprint(m.sitMinutes))
+						m.sitRemaining = time.Duration(m.sitMinutes) * time.Minute
+					}
 				}
 			}
 
@@ -232,10 +306,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.settings = settings{
 					WorkMinutes:  m.workMinutes,
 					PauseMinutes: m.pauseMinutes,
+					StandMinutes: m.standMinutes,
+					SitMinutes:   m.sitMinutes,
 					AutoMode:     m.autoIterateStates,
 				}
 				SaveSettings(m.settings)
-				m.SwitchState(workView)
+				if m.modeType == modeWorkPause {
+					m.SwitchState(workView)
+				} else {
+					m.SwitchState(standView)
+				}
 			}
 
 		// Cancel quit (ESC or n)
@@ -251,19 +331,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.SwitchState(settingView)
 			}
 
-		//Work View
-		case "w":
+		// Mode Toggle - T
+		case "t":
 			m.stopped = true
-			m.SwitchState(workView)
+			if m.modeType == modeWorkPause {
+				// Toggle between workView and pauseView
+				if m.state == workView {
+					m.SwitchState(pauseView)
+				} else if m.state == pauseView {
+					m.SwitchState(workView)
+				} else {
+					m.SwitchState(workView)
+				}
+			} else {
+				// Toggle between standView and sitView
+				if m.state == standView {
+					m.SwitchState(sitView)
+				} else if m.state == sitView {
+					m.SwitchState(standView)
+				} else {
+					m.SwitchState(standView)
+				}
+			}
 
-		// Pause View
-		case "p":
-			m.stopped = true
-			m.SwitchState(pauseView)
-
-		// Toggle Timer
+		// Toggle Timer (space)
 		case " ":
-			if m.state == workView || m.state == pauseView {
+			if m.state == workView || m.state == pauseView || m.state == standView || m.state == sitView {
 				wasStopped := m.stopped
 				m.stopped = !m.stopped
 				if wasStopped && !m.stopped {
@@ -321,6 +414,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			}
 		}
+		if m.state == standView {
+			if !m.stopped {
+				m.standRemaining -= time.Second
+			}
+			if m.standRemaining < 0 {
+				Notify("Time to sit down!")
+				m.ResetAndStop()
+				m.SwitchState(sitView)
+
+				// If auto iterate is enabled, start the next timer
+				if m.autoIterateStates {
+					m.stopped = false
+				}
+
+			}
+		}
+		if m.state == sitView {
+			if !m.stopped {
+				m.sitRemaining -= time.Second
+			}
+			if m.sitRemaining < 0 {
+				Notify("Time to stand up!")
+				m.ResetAndStop()
+				m.SwitchState(standView)
+
+				// If auto iterate is enabled, start the next timer
+				if m.autoIterateStates {
+					m.stopped = false
+				}
+
+			}
+		}
 
 		if !m.stopped {
 			return m, tickCmd()
@@ -362,6 +487,8 @@ func (m *model) SwitchState(newState int) {
 func (m *model) ResetAndStop() {
 	m.workRemaining = time.Duration(m.workMinutes) * time.Minute
 	m.pauseRemaining = time.Duration(m.pauseMinutes) * time.Minute
+	m.standRemaining = time.Duration(m.standMinutes) * time.Minute
+	m.sitRemaining = time.Duration(m.sitMinutes) * time.Minute
 	m.stopped = true
 }
 
@@ -376,6 +503,10 @@ func RenderView(m *model) string {
 	case workView:
 		return RenderDisplay(m)
 	case pauseView:
+		return RenderDisplay(m)
+	case standView:
+		return RenderDisplay(m)
+	case sitView:
 		return RenderDisplay(m)
 	case settingView:
 		return RenderSettings(*m)
@@ -397,17 +528,31 @@ func RenderDisplay(m *model) string {
 	var timerRemaining time.Duration
 	var timerColor lg.Color
 	var progressPercent float64
+	var totalDuration time.Duration
 
 	if m.state == workView {
 		timerRemaining = m.workRemaining
 		timerColor = workModeColor
-		totalDuration := time.Duration(m.workMinutes) * time.Minute
-		progressPercent = 1.0 - (m.workRemaining.Seconds() / totalDuration.Seconds())
-	} else {
+		totalDuration = time.Duration(m.workMinutes) * time.Minute
+	} else if m.state == pauseView {
 		timerRemaining = m.pauseRemaining
 		timerColor = pauseColor
-		totalDuration := time.Duration(m.pauseMinutes) * time.Minute
-		progressPercent = 1.0 - (m.pauseRemaining.Seconds() / totalDuration.Seconds())
+		totalDuration = time.Duration(m.pauseMinutes) * time.Minute
+	} else if m.state == standView {
+		timerRemaining = m.standRemaining
+		timerColor = standColor
+		totalDuration = time.Duration(m.standMinutes) * time.Minute
+	} else {
+		timerRemaining = m.sitRemaining
+		timerColor = sitColor
+		totalDuration = time.Duration(m.sitMinutes) * time.Minute
+	}
+
+	// Calculate progress percentage
+	if totalDuration.Seconds() > 0 {
+		progressPercent = 1.0 - (timerRemaining.Seconds() / totalDuration.Seconds())
+	} else {
+		progressPercent = 0
 	}
 
 	// Ensure progress is between 0 and 1
@@ -444,7 +589,12 @@ func RenderDisplay(m *model) string {
 }
 
 func RenderSettings(m model) string {
-	labels := []string{"Work", "Pause", "Auto Mode"}
+	var labels []string
+	if m.modeType == modeWorkPause {
+		labels = []string{"Work", "Pause", "Auto Mode"}
+	} else {
+		labels = []string{"Stand", "Sit", "Auto Mode"}
+	}
 
 	focusStyle := lg.NewStyle().
 		Border(lg.NormalBorder()).
@@ -510,7 +660,12 @@ func RenderSettings(m model) string {
 		Align(lg.Center).
 		Margin(0, 0, 1, 0)
 
-	title := titleStyle.Render("Pomo-Settings")
+	var title string
+	if m.modeType == modeWorkPause {
+		title = titleStyle.Render("Pomo-Settings")
+	} else {
+		title = titleStyle.Render("Desk-Mode Settings")
+	}
 
 	settingsStyle := lg.NewStyle().
 		Foreground(lightColor).
@@ -530,9 +685,13 @@ func RenderHelp(m model) string {
 	var helpText string
 	switch m.state {
 	case workView:
-		helpText = "[SPACE] Toggle, [P]ause, [S]ettings, [R]eset, [Q]uit"
+		helpText = "[SPACE] TimerToggle, [T]oggle Mode, [S]ettings, [R]eset, [Q]uit"
 	case pauseView:
-		helpText = "[SPACE] Toggle, [W]ork, [S]ettings, [R]eset, [Q]uit"
+		helpText = "[SPACE] TimerToggle, [T]oggle Mode, [S]ettings, [R]eset, [Q]uit"
+	case standView:
+		helpText = "[SPACE] TimerToggle, [T]oggle Mode, [S]ettings, [R]eset, [Q]uit"
+	case sitView:
+		helpText = "[SPACE] TimerToggle, [T]oggle Mode, [S]ettings, [R]eset, [Q]uit"
 	case settingView:
 		helpText = "[← →] Field  [↑ ↓] +/- min  [SPACE] Toggle  [ENTER] Save"
 	}
@@ -570,6 +729,10 @@ func GetRandomModeTitle(m model) string {
 		return "- " + workTitles[rand.Intn(len(workTitles))] + " -"
 	case pauseView:
 		return "- " + pauseTitles[rand.Intn(len(pauseTitles))] + " -"
+	case standView:
+		return "- " + standTitles[rand.Intn(len(standTitles))] + " -"
+	case sitView:
+		return "- " + sitTitles[rand.Intn(len(sitTitles))] + " -"
 	}
 	return ""
 }

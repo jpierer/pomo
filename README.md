@@ -24,6 +24,32 @@ The technique helps improve focus and productivity by creating structured work s
 
 Learn more about the [Pomodoro Technique on Wikipedia](https://en.wikipedia.org/wiki/Pomodoro_Technique).
 
+## Modes
+
+**Pomo** supports two distinct working modes:
+
+### Work/Pause Mode (default)
+The classic Pomodoro technique. Work in focused intervals followed by restorative breaks. Default is 25 minutes work + 5 minutes pause, fully customizable.
+
+### Desk Mode
+A health-focused mode designed to encourage movement. Alternate between standing and sitting at your desk. Default is 30 minutes each, fully customizable. Perfect for remote workers and desk-bound professionals.
+
+## Usage
+
+### Start the application
+
+**Work/Pause Mode (default):**
+```bash
+./pomo
+```
+
+**Desk Mode (Stand/Sit):**
+```bash
+./pomo --mode desk
+```
+
+The app saves your settings automatically, so your preferred durations and auto-iterate preference persist across sessions.
+
 ## Installation
 
 ### Requirements
@@ -43,8 +69,11 @@ cd pomo
 # Build the application
 go build
 
-# Run the app
+# Run the app (Work/Pause mode)
 ./pomo
+
+# Or use Desk mode
+./pomo --mode desk
 ```
 
 Or install directly with Go:
@@ -57,25 +86,37 @@ go install github.com/jpierer/pomo@latest
 
 - **Beautiful TUI Interface** - Clean, modern terminal interface using Bubble Tea
 - **Visual Progress Bar** - Real-time progress visualization with color-coded modes
-- **Customizable Timers** - Set custom work and pause durations (1-60 minutes)
-- **Auto-Iterate Mode** - Automatically switch between work and pause sessions
+- **Two Operating Modes**:
+  - **Work/Pause Mode** - Classic Pomodoro technique (25 min work + 5 min pause, customizable)
+  - **Desk Mode** - Health-conscious Stand/Sit reminders (30 min each, customizable)
+- **Customizable Timers** - Set custom durations for all timer types (1-60 minutes)
+- **Auto-Iterate Mode** - Automatically switch between sessions
 - **Desktop Notifications** - System notifications when sessions complete
 - **Persistent Settings** - Your preferences are saved automatically
-- **Dynamic Mode Titles** - Motivational titles that change with each session
 - **Lightweight** - Fast and minimal resource usage
 - **Cross-Platform** - Works on macOS, Linux, and Windows
 - **Keyboard Shortcuts** - Full keyboard navigation and controls
 
 ### Controls
 
-- `SPACE` - Start/Stop timer
+#### Work/Pause Mode (default)
+- `SPACE` - Timer Start/Stop
+- `T` - Toggle between Work and Pause modes
 - `S` - Open settings
 - `R` - Reset current timer
-- `W` - Switch to work mode
-- `P` - Switch to pause mode
 - `Q` - Quit application
-- `↑/↓` - Adjust values in settings
-- `←/→` - Navigate between settings fields
+
+#### Desk Mode (Stand/Sit)
+- `SPACE` - Timer Start/Stop
+- `T` - Toggle between Stand and Sit modes
+- `S` - Open settings
+- `R` - Reset current timer
+- `Q` - Quit application
+
+#### Settings
+- `← / →` - Navigate between settings fields
+- `↑ / ↓` - Adjust values (+/- minutes)
+- `SPACE` - Toggle auto-iterate checkbox
 - `ENTER` - Save settings and return to timer
 
 ## Technical Details
