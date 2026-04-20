@@ -209,8 +209,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Quit View
 		case "ctrl+c", "q":
-			// Open confirm
-			m.SwitchState(quitView)
+			// Open confirm (guard against double-q)
+			if m.state != quitView {
+				m.SwitchState(quitView)
+			}
 
 		// Navigation in quit view
 		case "left":
@@ -322,17 +324,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc", "n":
 			if m.state == quitView {
 				m.state = m.beforeState
+				m.modeTitle = GetRandomModeTitle(m)
 			}
 
 		// Open Setting
 		case "s":
-			if m.state != settingView {
+			if m.state != settingView && m.state != quitView {
 				m.stopped = true
 				m.SwitchState(settingView)
 			}
 
 		// Mode Toggle - T
 		case "t":
+			if m.state == quitView {
+				break
+			}
 			m.stopped = true
 			if m.modeType == modeWorkPause {
 				// Toggle between workView and pauseView
@@ -377,6 +383,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state == workView || m.state == pauseView || m.state == standView || m.state == sitView {
 				m.ResetAndStop()
 			}
+
 
 		}
 
