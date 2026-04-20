@@ -394,7 +394,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.stopped {
 				m.workRemaining -= time.Second
 			}
-			if m.workRemaining < 0 {
+			if m.workRemaining <= 0 {
 				Notify("Time is up, take a break!")
 				m.ResetAndStop()
 				m.SwitchState(pauseView)
@@ -405,12 +405,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 			}
-		}
-		if m.state == pauseView {
+		} else if m.state == pauseView {
 			if !m.stopped {
 				m.pauseRemaining -= time.Second
 			}
-			if m.pauseRemaining < 0 {
+			if m.pauseRemaining <= 0 {
 				Notify("Time is up, get back to work!")
 				m.ResetAndStop()
 				m.SwitchState(workView)
@@ -421,12 +420,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 			}
-		}
-		if m.state == standView {
+		} else if m.state == standView {
 			if !m.stopped {
 				m.standRemaining -= time.Second
 			}
-			if m.standRemaining < 0 {
+			if m.standRemaining <= 0 {
 				Notify("Time to sit down!")
 				m.ResetAndStop()
 				m.SwitchState(sitView)
@@ -437,12 +435,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 			}
-		}
-		if m.state == sitView {
+		} else if m.state == sitView {
 			if !m.stopped {
 				m.sitRemaining -= time.Second
 			}
-			if m.sitRemaining < 0 {
+			if m.sitRemaining <= 0 {
 				Notify("Time to stand up!")
 				m.ResetAndStop()
 				m.SwitchState(standView)
