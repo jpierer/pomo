@@ -210,7 +210,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Quit View
 		case "ctrl+c", "q":
 			// Open confirm
-			m.state = quitView
+			m.SwitchState(quitView)
 
 		// Navigation in quit view
 		case "left":
@@ -374,7 +374,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Reset
 		case "r":
-			if m.state == workView || m.state == pauseView {
+			if m.state == workView || m.state == pauseView || m.state == standView || m.state == sitView {
 				m.ResetAndStop()
 			}
 
