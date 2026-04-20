@@ -115,10 +115,14 @@ func NewModel(modeType int) model {
 
 	settings, err := LoadSettings()
 	if err == nil {
-		workMinutes = settings.WorkMinutes
-		pauseMinutes = settings.PauseMinutes
 		autoMode = settings.AutoMode
 		// Only override if non-zero values exist (for backwards compatibility)
+		if settings.WorkMinutes > 0 {
+			workMinutes = settings.WorkMinutes
+		}
+		if settings.PauseMinutes > 0 {
+			pauseMinutes = settings.PauseMinutes
+		}
 		if settings.StandMinutes > 0 {
 			standMinutes = settings.StandMinutes
 		}
