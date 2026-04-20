@@ -211,6 +211,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			// Open confirm (guard against double-q)
 			if m.state != quitView {
+				m.quitSelected = 0
 				m.SwitchState(quitView)
 			}
 
@@ -336,7 +337,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Mode Toggle - T
 		case "t":
-			if m.state == quitView {
+			if m.state == quitView || m.state == settingView {
 				break
 			}
 			m.stopped = true
@@ -526,11 +527,11 @@ func RenderView(m *model) string {
 func RenderDisplay(m *model) string {
 
 	currentTime := time.Now()
-	currentTimeMin := int(currentTime.Hour())
-	currentTimeSec := int(currentTime.Minute()) % 60
+	currentTimeHour := int(currentTime.Hour())
+	currentTimeMin := int(currentTime.Minute())
 
-	// Format time as MM:SS
-	currentTimeString := fmt.Sprintf("%02d:%02d", currentTimeMin, currentTimeSec)
+	// Format time as HH:MM
+	currentTimeString := fmt.Sprintf("%02d:%02d", currentTimeHour, currentTimeMin)
 
 	var timerRemaining time.Duration
 	var timerColor lg.Color
